@@ -69,15 +69,15 @@ public class Gazi {
 						// Extract all variables
 						ApplicationCommandInteractionOption interaction = event.getOption("register").get();
 						String type = interaction.getOption("type").get().getValue().get().asString();
-						Matcher utcMatcher = utcDigitPattern.matcher(interaction.getOption("timezone").get().getValue().get().asString());
+						Matcher utcMatcher = utcDigitPattern.matcher(interaction.getOption("timezone").get().getValue().get().asString().trim());
 						utcMatcher.find();
 						int timezone = Integer.valueOf(utcMatcher.group());
-						int startHour = Integer.valueOf(interaction.getOption("start-hour").get().getValue().get().asString()) / 100;
-						int startMinutes = Integer.valueOf(interaction.getOption("start-minutes").get().getValue().get().asString());
-						String frequencyString = interaction.getOption("frequency").get().getValue().get().asString();
-						int total = (int) interaction.getOption("total").get().getValue().get().asLong();
+						int startHour = Integer.valueOf(interaction.getOption("start-hour").get().getValue().get().asString().trim()) / 100;
+						int startMinutes = Integer.valueOf(interaction.getOption("start-minutes").get().getValue().get().asString().trim());
+						String frequencyString = interaction.getOption("frequency").get().getValue().get().asString().trim();
+						int total = Integer.valueOf(interaction.getOption("total").get().getValue().get().getRaw().trim());
 						// Just so happens that taking the first 2 characters always works here.
-						int frequency = Integer.valueOf(frequencyString.substring(0, 2));
+						int frequency = Integer.valueOf(frequencyString.substring(0, 2).trim());
 						if (frequencyString.contains("Hour")) {
 							frequency *= 60;
 						}
