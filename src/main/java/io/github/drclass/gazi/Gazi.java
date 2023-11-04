@@ -58,6 +58,8 @@ public class Gazi {
 
 		GuildCommandRegistrar.create(client.getRestClient(), commandList).registerCommands(Snowflake.of(TESTING_GUILD_SNOWFLAKE))
 				.doOnError(e -> log.warn("Unable to create guild command", e)).onErrorResume(e -> Mono.empty()).blockLast();
+		GuildCommandRegistrar.create(client.getRestClient(), commandList).registerCommands(Snowflake.of(MAIN_GUILD_SNOWFLAKE))
+		.doOnError(e -> log.warn("Unable to create guild command", e)).onErrorResume(e -> Mono.empty()).blockLast();
 		
 		client.on(ChatInputInteractionEvent.class).subscribe(event -> {
 			if (event.getCommandName().equals("reminder")) {
