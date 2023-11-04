@@ -119,6 +119,7 @@ public class Gazi {
 							if (reminders.get(i).getUserId() == event.getInteraction().getUser().getId().asLong()
 									&& reminders.get(i).getReminderType() == Reminder.convertTypeStringToInteger(removeType)) {
 								reminders.remove(i);
+								CsvManager.writeRemindersToCsv(reminders);
 								event.reply("Removed the reminder").withEphemeral(true).block();
 								break outerSwitch;
 							}
