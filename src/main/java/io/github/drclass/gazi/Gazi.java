@@ -1,5 +1,7 @@
 package io.github.drclass.gazi;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +16,8 @@ import discord4j.core.object.command.ApplicationCommandInteractionOption;
 import discord4j.core.object.command.ApplicationCommandOption;
 import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.channel.MessageChannel;
+import discord4j.core.object.presence.ClientActivity;
+import discord4j.core.object.presence.ClientPresence;
 import discord4j.discordjson.json.ApplicationCommandOptionChoiceData;
 import discord4j.discordjson.json.ApplicationCommandOptionData;
 import discord4j.discordjson.json.ApplicationCommandRequest;
@@ -26,8 +30,12 @@ public class Gazi {
 	private static final Logger log = Loggers.getLogger(Gazi.class);
 
 	private static final long TESTING_GUILD_SNOWFLAKE = 806226208584106016L;
+	private static final long TESTING_GUILD_DEBUG_CHANNEL_SNOWFLAKE = 1170827118888898580L;
 	private static final long MAIN_GUILD_SNOWFLAKE = 342429033809575937L;
 	private static final long MAIN_GUILD_MESSAGE_CHANNEL_SNOWFLAKE = 1170407300972945568L;
+	private static final long DEVELOPER_USER_SNOWFLAKE = 185134233436553216L;
+	
+	private static final String VERSION = "v1.0.1";
 	
 	private static Pattern utcDigitPattern = Pattern.compile("-?\\d+");
 
@@ -40,10 +48,12 @@ public class Gazi {
 		if (reminders == null) {
 			reminders = new ArrayList<Reminder>();
 		}
-
+		
 		String token = args[0];
 		client = DiscordClient.create(token).login().block();
 
+		client.updatePresence(ClientPresence.online(ClientActivity.playing("Gazi " + VERSION))).subscribe();
+		
 		List<Guild> guilds = client.getGuilds().collectList().block();
 		for (Guild guild : guilds) {
 			if (!(guild.getId().asLong() == TESTING_GUILD_SNOWFLAKE || guild.getId().asLong() == MAIN_GUILD_SNOWFLAKE)) {
@@ -62,100 +72,118 @@ public class Gazi {
 		.doOnError(e -> log.warn("Unable to create guild command", e)).onErrorResume(e -> Mono.empty()).blockLast();
 		
 		client.on(ChatInputInteractionEvent.class).subscribe(event -> {
-			if (event.getCommandName().equals("reminder")) {
-				outerSwitch:
-				switch (event.getOptions().get(0).getName()) {
-					case "register":
-						// Extract all variables
-						ApplicationCommandInteractionOption interaction = event.getOption("register").get();
-						String type = interaction.getOption("type").get().getValue().get().asString();
-						Matcher utcMatcher = utcDigitPattern.matcher(interaction.getOption("timezone").get().getValue().get().asString().trim());
-						utcMatcher.find();
-						int timezone = Integer.valueOf(utcMatcher.group());
-						int startHour = Integer.valueOf(interaction.getOption("start-hour").get().getValue().get().asString().trim()) / 100;
-						int startMinutes = Integer.valueOf(interaction.getOption("start-minutes").get().getValue().get().asString().trim());
-						String frequencyString = interaction.getOption("frequency").get().getValue().get().asString().trim();
-						int total = Integer.valueOf(interaction.getOption("total").get().getValue().get().getRaw().trim());
-						// Just so happens that taking the first 2 characters always works here.
-						int frequency = Integer.valueOf(frequencyString.substring(0, 2).trim());
-						if (frequencyString.contains("Hour")) {
-							frequency *= 60;
-						}
-						// Run validation to see if we would send more notifications than possible in 1 day
-						if (total * frequency > 1440) {
-							event.reply(
-									"Error: Current settings would have notifications that extend past the 24 hour mark. Please reduce the frequency or total.")
-									.withEphemeral(true).block();
-							break;
-						}
-						// Run conversions (time zones suck)
-						int startOffset = ((timezone * -60) + (startHour * 60) + startMinutes + 1440) % 1440;
-						int reminderType = Reminder.convertTypeStringToInteger(type);
-						// Store reminder and inform user on when they will get notified
-						Reminder reminder = new Reminder(event.getInteraction().getUser().getId().asLong(), startOffset, frequency, total, reminderType, "");
-						// STORE THE REMINDER DUMMY
-						String output = "";
-						for (int i = 0; i < reminders.size(); i++) {
-							if (reminders.get(i).getUserId() == reminder.getUserId() && reminders.get(i).getReminderType() == reminder.getReminderType()) {
-								reminders.remove(i);
-								output += "> Replacing an already existing reminder for this type.\n";
+			try {
+				if (event.getCommandName().equals("reminder")) {
+					outerSwitch: switch (event.getOptions().get(0).getName()) {
+						case "register":
+							// Extract all variables
+							ApplicationCommandInteractionOption interaction = event.getOption("register").get();
+							String type = interaction.getOption("type").get().getValue().get().asString();
+							Matcher utcMatcher = utcDigitPattern.matcher(interaction.getOption("timezone").get().getValue().get().asString().trim());
+							utcMatcher.find();
+							int timezone = Integer.valueOf(utcMatcher.group());
+							int startHour = Integer.valueOf(interaction.getOption("start-hour").get().getValue().get().asString().trim()) / 100;
+							int startMinutes = Integer.valueOf(interaction.getOption("start-minutes").get().getValue().get().asString().trim());
+							String frequencyString = interaction.getOption("frequency").get().getValue().get().asString().trim();
+							int total = Integer.valueOf(interaction.getOption("total").get().getValue().get().getRaw().trim());
+							// Just so happens that taking the first 2 characters always works here.
+							int frequency = Integer.valueOf(frequencyString.substring(0, 2).trim());
+							if (frequencyString.contains("Hour")) {
+								frequency *= 60;
+							}
+							// Run validation to see if we would send more notifications than possible in 1
+							// day
+							if (total * frequency > 1440) {
+								event.reply(
+										"Error: Current settings would have notifications that extend past the 24 hour mark. Please reduce the frequency or total.")
+										.withEphemeral(true).block();
 								break;
 							}
-						}
-						reminders.add(reminder);
-						CsvManager.writeRemindersToCsv(reminders);
-						output += "You will recieve notifications at the following times for every 24 hour perioid:\n";
-						for (int i = 0; i < total; i++) {
-							output += "<t:" + (946688400 + (startOffset * 60) + ((frequency * 60) * i)) + ":t>\n";
-						}
-						// DEBUG INFO
-						output += "\n`DEBUG: " + type + " " + timezone + " " + startHour + " " + startMinutes + " " + frequency + " " + total + " " + startOffset + "`";
-						event.reply(output).withEphemeral(true).block();
-						break;
-					case "remove":
-						ApplicationCommandInteractionOption removeInteraction = event.getOption("remove").get();
-						String removeType = removeInteraction.getOption("type").get().getValue().get().asString();
-						for (int i = 0; i < reminders.size(); i++) {
-							if (reminders.get(i).getUserId() == event.getInteraction().getUser().getId().asLong()
-									&& reminders.get(i).getReminderType() == Reminder.convertTypeStringToInteger(removeType)) {
-								reminders.remove(i);
-								CsvManager.writeRemindersToCsv(reminders);
-								event.reply("Removed the reminder").withEphemeral(true).block();
-								break outerSwitch;
-							}
-						}
-						event.reply("No reminder found of that type").withEphemeral(true).block();
-						break;
-					case "shutup":
-						ApplicationCommandInteractionOption shutupInteraction = event.getOption("remove").get();
-						String shutupOutput = "";
-						for (Reminder r : reminders) {
-							if (r.getUserId() == event.getInteraction().getUser().getId().asLong()) {
-								if (shutupInteraction.getOption("type").get().getValue().isPresent()) {
-									if (Reminder.convertTypeStringToInteger(shutupInteraction.getOption("type").get().getValue().get().asString()) == r
-											.getReminderType()) {
-										r.setShutup(!r.getShutup());
-										shutupOutput += "Reminders for " + shutupInteraction.getOption("type").get().getValue().get().asString() + " have been paused or resumed.\n";
-									}
-								} else {
-									r.setShutup(!r.getShutup());
-									shutupOutput += "Reminders for " + r.getReminderType() + " have been paused or resumed.\n";
+							// Run conversions (time zones suck)
+							int startOffset = ((timezone * -60) + (startHour * 60) + startMinutes + 1440) % 1440;
+							int reminderType = Reminder.convertTypeStringToInteger(type);
+							// Store reminder and inform user on when they will get notified
+							Reminder reminder = new Reminder(event.getInteraction().getUser().getId().asLong(), startOffset, frequency, total, reminderType,
+									"");
+							// STORE THE REMINDER DUMMY
+							String output = "";
+							for (int i = 0; i < reminders.size(); i++) {
+								if (reminders.get(i).getUserId() == reminder.getUserId() && reminders.get(i).getReminderType() == reminder.getReminderType()) {
+									reminders.remove(i);
+									output += "> Replacing an already existing reminder for this type.\n";
+									break;
 								}
 							}
-						}
-						if (shutupOutput.equals("")) {
-							event.reply("No reminder(s) of the provided type where found").withEphemeral(true).block();
-						} else {
-							event.reply(shutupOutput).withEphemeral(true).block();
-						}
-						break;
-					default:
-						event.reply("Subcommand not handled yet. Please report this error.").withEphemeral(true).block();
-						break;
+							reminders.add(reminder);
+							CsvManager.writeRemindersToCsv(reminders);
+							output += "You will recieve notifications at the following times for every 24 hour perioid:\n";
+							for (int i = 0; i < total; i++) {
+								output += "<t:" + (946688400 + (startOffset * 60) + ((frequency * 60) * i)) + ":t>\n";
+							}
+							// DEBUG INFO
+							output += "\n`DEBUG: " + type + " " + timezone + " " + startHour + " " + startMinutes + " " + frequency + " " + total + " "
+									+ startOffset + "`";
+							event.reply(output).withEphemeral(true).block();
+							break;
+						case "remove":
+							ApplicationCommandInteractionOption removeInteraction = event.getOption("remove").get();
+							String removeType = removeInteraction.getOption("type").get().getValue().get().asString();
+							for (int i = 0; i < reminders.size(); i++) {
+								if (reminders.get(i).getUserId() == event.getInteraction().getUser().getId().asLong()
+										&& reminders.get(i).getReminderType() == Reminder.convertTypeStringToInteger(removeType)) {
+									reminders.remove(i);
+									CsvManager.writeRemindersToCsv(reminders);
+									event.reply("Removed the reminder").withEphemeral(true).block();
+									break outerSwitch;
+								}
+							}
+							event.reply("No reminder found of that type").withEphemeral(true).block();
+							break;
+						case "shutup":
+							ApplicationCommandInteractionOption shutupInteraction = event.getOption("remove").orElseGet(null);
+							String shutupOutput = "";
+							for (Reminder r : reminders) {
+								if (r.getUserId() == event.getInteraction().getUser().getId().asLong()) {
+									if (shutupInteraction != null && shutupInteraction.getOption("type").get().getValue().isPresent()) {
+										if (Reminder.convertTypeStringToInteger(shutupInteraction.getOption("type").get().getValue().get().asString()) == r
+												.getReminderType()) {
+											r.setShutup(!r.getShutup());
+											shutupOutput += "Reminders for " + shutupInteraction.getOption("type").get().getValue().get().asString()
+													+ " have been paused or resumed.\n";
+										}
+									} else {
+										r.setShutup(!r.getShutup());
+										shutupOutput += "Reminders for " + r.getReminderType() + " have been paused or resumed.\n";
+									}
+								}
+							}
+							if (shutupOutput.equals("")) {
+								event.reply("No reminder(s) of the provided type where found").withEphemeral(true).block();
+							} else {
+								event.reply(shutupOutput).withEphemeral(true).block();
+							}
+							break;
+						default:
+							event.reply("Subcommand not handled yet. Please report this error.").withEphemeral(true).block();
+							break;
+					}
+				}
+			} catch (Exception e) {
+				log.error("Error handling command interaction!", e);
+				try {
+					MessageChannel outputChannel = ((MessageChannel) client.getGuildById(Snowflake.of(TESTING_GUILD_SNOWFLAKE)).block()
+							.getChannelById(Snowflake.of(TESTING_GUILD_DEBUG_CHANNEL_SNOWFLAKE)).block());
+					StringWriter sw = new StringWriter();
+					PrintWriter pw = new PrintWriter(sw);
+					e.printStackTrace(pw);
+					outputChannel.createMessage(
+							client.getUserById(Snowflake.of(DEVELOPER_USER_SNOWFLAKE)).block().getMention() + " an error has occured!\n\n" + sw.toString()).block();
+					event.reply("An error has occured! My developer should already have been notified. I am sorry for this interuption.").block();
+				} catch (Exception e1) {
+					log.error("FATAL: Unable to print debug information!", e);
+					System.exit(-1);
 				}
 			}
-		}, event -> {
-			event.printStackTrace();
 		});
 
 		// Main execution loop
