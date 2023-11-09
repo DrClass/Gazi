@@ -124,6 +124,7 @@ public class Gazi {
 							output += "\n`DEBUG: " + type + " " + timezone + " " + startHour + " " + startMinutes + " " + frequency + " " + total + " "
 									+ startOffset + "`";
 							event.reply(output).withEphemeral(true).block();
+							log.info("New reminder for: " + event.getInteraction().getUser().getUsername() + "\n" + output);
 							break;
 						case "remove":
 							ApplicationCommandInteractionOption removeInteraction = event.getOption("remove").get();
@@ -201,9 +202,12 @@ public class Gazi {
 						if (i == 0 && temp == 0) {
 							reminder.setShutup(false);
 						}
-						if (temp == 0) {
+						if (temp == 0 && !reminder.getShutup()) {
 							outputChannel.createMessage(client.getUserById(Snowflake.of(reminder.getUserId())).block().getMention() + " make sure you "
 									+ Reminder.convertTypeIntegerToString(reminder.getReminderType()).toLowerCase() + "!").subscribe();
+						}
+						if (temp == 0) {
+							log.info(reminder.toString() + " " + temp + " " + Instant.now().getEpochSecond());
 						}
 					}
 				}
