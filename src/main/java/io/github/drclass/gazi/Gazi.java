@@ -141,7 +141,7 @@ public class Gazi {
 							event.reply("No reminder found of that type").withEphemeral(true).block();
 							break;
 						case "shutup":
-							ApplicationCommandInteractionOption shutupInteraction = event.getOption("remove").orElseGet(null);
+							ApplicationCommandInteractionOption shutupInteraction = event.getOption("shutup").orElseGet(null);
 							String shutupOutput = "";
 							for (Reminder r : reminders) {
 								if (r.getUserId() == event.getInteraction().getUser().getId().asLong()) {
