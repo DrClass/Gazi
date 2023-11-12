@@ -145,7 +145,7 @@ public class Gazi {
 							String shutupOutput = "";
 							for (Reminder r : reminders) {
 								if (r.getUserId() == event.getInteraction().getUser().getId().asLong()) {
-									if (shutupInteraction != null && shutupInteraction.getOption("type").get().getValue().isPresent()) {
+									if (shutupInteraction != null && shutupInteraction.getOption("type").isPresent()) {
 										if (Reminder.convertTypeStringToInteger(shutupInteraction.getOption("type").get().getValue().get().asString()) == r
 												.getReminderType()) {
 											r.setShutup(!r.getShutup());
